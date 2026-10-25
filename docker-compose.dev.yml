@@ -1,0 +1,56 @@
+# docker-compose.dev.yml:
+# The root orchestration file for the development environment.
+
+services:
+  # Defines the backend application service.
+  backend:
+    build:
+      context: ./backend # The directory to be used as the 'build context'.
+      dockerfile: dev.Dockerfile # This will simply tell which dockerfile to read.
+    volumes:
+      # Bind-mount local directory to live-sync code changes into the container in real time.
+      - ./backend:/usr/src/app
+      # Anonymous volume: protect the container's installed dependencies by preventing local host node_modules from overwriting container node_modules.
+      - /usr/src/app/node_modules
+    environment:
+      - NODE_ENV=development # Set the runtime environment to 'development'.
+      - PORT=3003 # Explicitly defines the port the Express app listens on.
+      - MONGODB_URI=${MONGODB_URI} # Passes our database connection string securely from our host .env file.
+      - SECRET=${SECRET} # Pass in our secret token key.
+
+  # The React frontend application service (Vite).
+  frontend:
+    build:
+      context: ./frontend # The directory to be used as the 'build context'.
+      dockerfile: dev.Dockerfile # This will simply tell which dockerfile to read.
+    volumes:
+      # Bind-mount local frontend code into the container for live-reloading.
+      - ./frontend:/usr/src/app
+      # Anonymous volume to protect container node_modules from being overwritten by host.
+      - /usr/src/app/node_modules
+    environment:
+      - VITE_BACKEND_URL=/api
+    command: npm run dev -- --host
+
+  # Nginx Reverse Proxy service acting as the single point of entry.
+  nginx:
+    image: nginx:alpine
+    ports:
+      # Map host port 8080 to container port 80. The only port mapped in this file. Making Nginx the exclusive gateway to your application stack.
+      - '8080:80'
+    volumes:
+      # Mount the development Nginx configuration file as read-only (:ro).
+      - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      # Ensure the frontend and backend container starts before Nginx attempts to resolve its DNS name.
+      - frontend
+      - backend
+
+# Clean up old containers:
+# # docker compose -f docker-compose.dev.yml down
+# Build and run:
+# # docker compose -f docker-compose.dev.yml up --build
+# Test with browser:
+# # http://localhost:8080
+# Test with REST Client:
+# # backend/request.rest
