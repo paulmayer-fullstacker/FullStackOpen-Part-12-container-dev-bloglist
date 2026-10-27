@@ -1,0 +1,43 @@
+# docker-compose.yml:
+# The root orchestration file for the production environment.
+
+services:
+  # Define Express backend service named backend (for Production).
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: prod-bloglist-backend
+    environment:
+      # Remote MongoDB Atlas connection string and server configuration
+      - MONGODB_URI=${MONGODB_URI}
+      # Use the PORT from the .env file. Default to 3003 if PORT not defined.
+      - PORT=${PORT:-3003}
+      - SECRET=${SECRET}
+
+  # NOTE: The backend will start up and manage its connection to Mongo Atlas.
+  # So, no special Docker healthcheck is needed for a remote cloud database.
+
+  # Define React frontend service named frontend (Production)
+  frontend:
+    build:
+      context: ./frontend # The context will pick this directory as the 'build context'.
+      dockerfile: Dockerfile # This will simply tell which dockerfile to read.
+      args:
+        - VITE_BACKEND_URL=/api
+    image: prod-bloglist-frontend
+
+  # Nginx Production reverse proxy service acting as the single point of entry.
+  nginx:
+    image: nginx:1.29-alpine
+    volumes:
+      # Mount the production Nginx configuration file as read-only (:ro).
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      # Map host port 8080 to container port 80 (exclusive gateway into the stack).
+      - 8080:80 # The only port mapped in this file. Making Nginx the exclusive gateway to your application stack.
+    container_name: prod-bloglist-proxy
+    depends_on:
+      # Ensure the 'frontend' and 'backend' containers starts before Nginx attempts to resolve its DNS name.
+      - frontend
+      - backend
